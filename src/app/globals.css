@@ -1,0 +1,128 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f6f6f7;
+  --surface: #ffffff;
+  --foreground: #18181b;
+  --muted: #71717a;
+  /* Was #a1a1a6 (~2.6:1 on white/surface) -- fails WCAG AA's 4.5:1 for the
+     table headers/hints/timestamps this is used for app-wide. #6b6b70
+     clears AA (~4.9:1) while staying visually a step lighter than
+     --foreground/--muted in weight, if not literal darkness. */
+  --muted-2: #6b6b70;
+  --border: #e4e4e7;
+  --border-soft: #f0f0f1;
+  --navy: #1b1667;
+  --gold: #f5a623;
+
+  --critical-bg: #fef2f2;
+  --critical-text: #b91c1c;
+  --critical-border: #fecaca;
+  --low-bg: #fffbeb;
+  --low-text: #b45309;
+  --low-border: #fde68a;
+  --ok-bg: #f0fdf4;
+  --ok-text: #15803d;
+  --ok-border: #bbf7d0;
+
+  --navy-bg: #eeedf9;
+  --navy-text: #1b1667;
+  --navy-border: #c7c2ea;
+  --gold-bg: #fef6e6;
+  --gold-text: #92600a;
+  --gold-border: #f6d999;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-2: var(--muted-2);
+  --color-border: var(--border);
+  --color-border-soft: var(--border-soft);
+  --color-navy: var(--navy);
+  --color-gold: var(--gold);
+  --color-critical-bg: var(--critical-bg);
+  --color-critical-text: var(--critical-text);
+  --color-critical-border: var(--critical-border);
+  --color-low-bg: var(--low-bg);
+  --color-low-text: var(--low-text);
+  --color-low-border: var(--low-border);
+  --color-ok-bg: var(--ok-bg);
+  --color-ok-text: var(--ok-text);
+  --color-ok-border: var(--ok-border);
+  --color-navy-bg: var(--navy-bg);
+  --color-navy-text: var(--navy-text);
+  --color-navy-border: var(--navy-border);
+  --color-gold-bg: var(--gold-bg);
+  --color-gold-text: var(--gold-text);
+  --color-gold-border: var(--gold-border);
+  --font-sans: var(--font-public-sans);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+}
+
+.input {
+  height: 2.375rem;
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 0 0.75rem;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--foreground);
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--muted-2);
+}
+
+.input:read-only {
+  background: var(--background);
+  color: var(--muted);
+}
+
+/*
+ * Print isolation: anything that shouldn't print (Sidebar, Topbar, the
+ * normal on-screen content around a print target like the QR label sheet)
+ * marks itself .no-print. Deliberately `display: none` rather than
+ * `visibility: hidden` — visibility keeps the element's layout box (and
+ * height) intact, which was silently padding print output with blank
+ * trailing pages equal to however many pages that invisible content would
+ * have taken up on its own. display:none removes it from flow entirely,
+ * so the printed page is sized to what's actually visible.
+ * min-h-screen (100vh) on AppShell's root wrapper is neutralized too, for
+ * the same reason — a fixed viewport-height floor doesn't collapse away
+ * just because its children are hidden.
+ */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .min-h-screen {
+    min-height: 0 !important;
+  }
+  /* RisDocumentPanel/DeliveryDocumentPanel (DocumentModals.tsx) render the
+     actual document inside a Card so it looks right inline on screen — but
+     a printed page should be the document itself, not "a document inside a
+     bordered, padded card". Strip the Card chrome only when printing. */
+  .document-panel {
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+}
+
+@page {
+  size: A4;
+  margin: 1cm;
+}
