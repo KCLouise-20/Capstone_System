@@ -76,12 +76,16 @@ export interface RisRecord {
   items: RisItemLine[];
   requestedBy?: string;
   approvedBy?: string;
+  approvedAt?: string;
+  releasedAt?: string;
+  rejectedAt?: string;
 }
 
 export interface SupplyRequestItem {
   itemName: string;
   qty: number;
   unit?: string;
+  stockOnHand?: number;
 }
 
 export interface SupplyRequest {
@@ -91,6 +95,7 @@ export interface SupplyRequest {
   status: RequestStatus;
   items: SupplyRequestItem[];
   approvedBy?: string;
+  /** When the Officer approved or released it — see getMyRequests. */
   approvedOn?: string;
   remarks?: string;
 }

@@ -43,8 +43,16 @@ export interface RisDocumentRecord {
   items: { itemName: string; qty: number; unit?: string; stockOnHand?: number }[];
   requestedBy?: string;
   approvedBy?: string;
+  /**
+   * When the Officer approved or released this — printed so the receipt
+   * proves the date of action, not just that it happened. Comes from
+   * releases.approved_at / released_at; absent for pending, rejected and
+   * draft rows, so the date line is omitted entirely for those.
+   */
+  approvedOn?: string;
   remarks?: string;
 }
+
 
 export function PrintHeader({
   letterhead,
@@ -215,7 +223,7 @@ function RisDocumentContent({
         subtitle={`RIS No. ${record.refNo}`}
         generatedOn={now()}
       />
-      <div className="mb-3 grid grid-cols-3 gap-4 text-[12px]">
+            <div className="mb-3 grid grid-cols-3 gap-4 text-[12px]">
         {record.department && (
           <div>
             <span className="font-semibold">Department: </span>
@@ -232,6 +240,14 @@ function RisDocumentContent({
           <span className="font-semibold">Status: </span>
           {record.status}
         </div>
+        {record.approvedOn && (
+          <div>
+            <span className="font-semibold">
+              {record.status === "Released" ? "Released on: " : record.status === "Rejected" ? "Rejected on: " : "Approved on: "}
+            </span>
+            {formatPhDate(record.approvedOn)}
+          </div>
+        )}
         {record.purpose && (
           <div className="col-span-3">
             <span className="font-semibold">Purpose: </span>
@@ -245,6 +261,7 @@ function RisDocumentContent({
           </div>
         )}
       </div>
+
       <PrintTable
         headers={["Item", "Qty", "Stock on Hand"]}
         rows={record.items.map((it) => [`${it.itemName}${it.unit ? ` (${it.unit})` : ""}`, it.qty, it.stockOnHand ?? "—"])}

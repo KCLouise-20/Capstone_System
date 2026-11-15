@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Trash2, FileText } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Badge, requestStatusTone } from "@/components/ui/Badge";
+import { Badge, requestStatusTone, stockStatusTone } from "@/components/ui/Badge";
 import {
   submitSupplyRequest,
   saveSupplyRequestDraft,
@@ -14,12 +14,15 @@ import {
 } from "@/lib/supabase/mutations";
 import { RisDocumentPanel, type RisDocumentRecord } from "@/components/reports/DocumentModals";
 import { ItemPhoto } from "@/components/inventory/ItemPhoto";
-import type { InventoryItem, SupplyRequest } from "@/lib/types";
+import { todayPh } from "@/lib/datetime";
+import type { InventoryItem, StockStatus, SupplyRequest } from "@/lib/types";
 import type { DocumentLetterhead } from "@/lib/letterhead";
 
 interface DraftLine {
   itemName: string;
   qty: number;
+  stock: number;
+  stockStatus: StockStatus;
 }
 
 export function RequestSuppliesClient({
@@ -46,10 +49,9 @@ export function RequestSuppliesClient({
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [pendingItem, setPendingItem] = useState(inventoryItems[0]?.itemName ?? "");
   const [pendingQty, setPendingQty] = useState(1);
-  // Shown on the Qty field's own label so the unit is visible while
-  // picking a quantity, not just after the line's been added below.
-  const pendingUnit = inventoryItems.find((i) => i.itemName === pendingItem)?.unit ?? "";
-  const pendingItemPhoto = inventoryItems.find((i) => i.itemName === pendingItem)?.imageUrl ?? null;
+  const pendingInventoryItem = inventoryItems.find((i) => i.itemName === pendingItem);
+  const pendingUnit = pendingInventoryItem?.unit ?? "";
+  const pendingItemPhoto = pendingInventoryItem?.imageUrl ?? null;
   const [dateNeeded, setDateNeeded] = useState(() => new Date().toISOString().slice(0, 10));
   const [purpose, setPurpose] = useState("");
   const [selectedRef, setSelectedRef] = useState(myRequests[0]?.refNo ?? "");
@@ -59,15 +61,65 @@ export function RequestSuppliesClient({
 
   const selected = myRequests.find((r) => r.refNo === selectedRef) ?? myRequests[0];
 
+  // How many of the item being picked are already on the draft. Counts
+  // toward the stock check below, because addLine merges a repeated item
+  // into the one existing row rather than adding a second one.
+  const pendingExistingQty =
+    lines.find((l) => l.itemName === pendingItem)?.qty ?? 0;
+
+  // True when what's already on the draft plus what's being picked exceeds
+  // stock on hand. This BLOCKS the add and Submit (see addLine and
+  // submitRequest) instead of just colouring the hint red.
+  const pendingOverStock =
+    !!pendingInventoryItem &&
+    pendingExistingQty + pendingQty > pendingInventoryItem.onHand;
+
+  // Today's date in Philippine time, YYYY-MM-DD — the shape the date input
+  // uses, so it can be compared as a plain string. Manila-pinned on purpose:
+  // a request filed at 7am in Manila is still "yesterday" in UTC, and a
+  // UTC-derived today would wrongly reject a legitimate same-day request.
+  const today = todayPh();
+  const dateInPast = !!dateNeeded && dateNeeded < today;
+
   function addLine() {
-    if (!pendingItem || pendingQty <= 0) return;
+    const item = inventoryItems.find((i) => i.itemName === pendingItem);
+    if (!item || pendingQty <= 0) return;
+
+    // Hard block: refuse the line outright when the running total for this
+    // item would exceed stock on hand. release_items merges duplicates into
+    // one row (unique (release_id, item_id)), so the existing line's
+    // quantity has to count too — otherwise adding 3 twice past a stock of
+    // 4 would slip through.
+    const existingQty = lines.find((l) => l.itemName === item.itemName)?.qty ?? 0;
+    const totalRequested = existingQty + pendingQty;
+    if (totalRequested > item.onHand) {
+      setFormError(
+        existingQty > 0
+          ? `Only ${item.onHand} ${item.unit} of ${item.itemName} are on hand, and ${existingQty} ${item.unit} ${existingQty === 1 ? "is" : "are"} already requested. Reduce the quantity.`
+          : `Only ${item.onHand} ${item.unit} of ${item.itemName} ${item.onHand === 1 ? "is" : "are"} on hand. Reduce the quantity.`,
+      );
+      return;
+    }
+
+    setFormError("");
     // Merge into an existing line for the same item — release_items has a
     // unique (release_id, item_id) constraint, so two rows for one item
     // would fail the insert outright.
     setLines((prev) => {
-      const existingIndex = prev.findIndex((l) => l.itemName === pendingItem);
+      const existingIndex = prev.findIndex((l) => l.itemName === item.itemName);
       if (existingIndex === -1) {
-        return [...prev, { itemName: pendingItem, qty: pendingQty }];
+        return [
+          ...prev,
+          {
+            itemName: item.itemName,
+            qty: pendingQty,
+            // Snapshot stock at pick time, same pattern as ReleasesClient's
+            // addLine — the row then shows the figure as it was when added,
+            // and the stock badge alongside it.
+            stock: item.onHand,
+            stockStatus: item.status,
+          },
+        ];
       }
       const next = [...prev];
       next[existingIndex] = { ...next[existingIndex], qty: next[existingIndex].qty + pendingQty };
@@ -80,9 +132,46 @@ export function RequestSuppliesClient({
     setLines((prev) => prev.filter((_, i) => i !== index));
   }
 
+  /**
+   * Last line of defence before the insert: re-checks every queued line
+   * against the stock figures this page was rendered with. Catches a line
+   * that was valid when added but whose item has since been release-edited
+   * down (another Officer acting while this form sat open), and any caller
+   * that skipped the addLine guard. The authoritative check is still the
+   * server's — submitSupplyRequest compares against live stock_quantity.
+   */
+  function findOverStockLine(): DraftLine | undefined {
+    return lines.find((line) => {
+      const item = inventoryItems.find((i) => i.itemName === line.itemName);
+      return !!item && line.qty > item.onHand;
+    });
+  }
+
   function submitRequest() {
     if (lines.length === 0) {
       setFormError("Add at least one item before submitting your request.");
+      return;
+    }
+
+    // Same-day is allowed — an Officer can still act on a request filed
+    // today. Only a genuinely earlier calendar date is refused. Strings
+    // compare correctly here because both sides are zero-padded YYYY-MM-DD
+    // and both come from the same Manila-pinned clock.
+    if (!dateNeeded) {
+      setFormError("Set the date you need this.");
+      return;
+    }
+    if (dateInPast) {
+      setFormError("The date needed can't be in the past. Pick today or a later date.");
+      return;
+    }
+
+    const overStock = findOverStockLine();
+    if (overStock) {
+      const item = inventoryItems.find((i) => i.itemName === overStock.itemName);
+      setFormError(
+        `Only ${item?.onHand ?? overStock.stock} ${item?.unit ?? ""} of ${overStock.itemName} ${(item?.onHand ?? overStock.stock) === 1 ? "is" : "are"} available. Reduce the quantity before submitting.`.trim(),
+      );
       return;
     }
 
@@ -109,6 +198,11 @@ export function RequestSuppliesClient({
   }
 
   function saveDraft() {
+    if (dateInPast) {
+      setFormError("The date needed can't be in the past. Pick today or a later date.");
+      return;
+    }
+
     startDraftTransition(async () => {
       const result = await saveSupplyRequestDraft({
         purpose: purpose || undefined,
@@ -164,18 +258,26 @@ export function RequestSuppliesClient({
   // scans it on Releases to pull up and confirm this exact record before
   // handing anything over, instead of just taking the requester's word for
   // it.
-  function openDocument(r: SupplyRequest) {
+   function openDocument(r: SupplyRequest) {
     setViewingRis({
       refNo: r.refNo,
       department,
       date: r.date,
       status: r.status,
-      items: r.items.map((it) => ({ itemName: it.itemName, qty: it.qty, unit: it.unit })),
+      items: r.items.map((it) => ({
+        itemName: it.itemName,
+        qty: it.qty,
+        unit: it.unit,
+        stockOnHand: it.stockOnHand,
+      })),
       requestedBy,
       approvedBy: r.approvedBy,
+      // Was omitted entirely, which is why the receipt had no date line.
+      approvedOn: r.approvedOn,
       remarks: r.remarks,
     });
   }
+
 
   return (
     <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[1.2fr_1fr]">
@@ -193,9 +295,15 @@ export function RequestSuppliesClient({
             <input
               type="date"
               value={dateNeeded}
+              min={today}
               onChange={(e) => setDateNeeded(e.target.value)}
               className="input"
             />
+            {dateInPast && (
+              <span className="text-[11px] font-medium text-critical-text">
+                This date is in the past.
+              </span>
+            )}
           </Field>
         </div>
 
@@ -237,30 +345,49 @@ export function RequestSuppliesClient({
             </Field>
             <button
               onClick={addLine}
-              className="mb-0.5 flex size-9.5 shrink-0 items-center justify-center rounded-lg bg-foreground text-white hover:bg-black"
+              disabled={pendingOverStock}
+              title={pendingOverStock ? "Quantity exceeds stock on hand" : undefined}
+              className="mb-0.5 flex size-9.5 shrink-0 items-center justify-center rounded-lg bg-foreground text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Plus size={16} strokeWidth={2} />
             </button>
           </div>
+
+          {pendingInventoryItem && (
+            <p className={`text-[11.5px] ${pendingOverStock ? "text-critical-text" : "text-muted"}`}>
+              {pendingInventoryItem.onHand} {pendingUnit} on hand
+              {pendingExistingQty > 0 && ` · ${pendingExistingQty} already requested`}
+              {pendingOverStock && " — exceeds available stock"}
+            </p>
+          )}
 
           {lines.length > 0 && (
             <div className="flex flex-col rounded-lg border border-border-soft">
               {lines.map((line, i) => {
                 const invItem = inventoryItems.find((it) => it.itemName === line.itemName);
                 const unit = invItem?.unit ?? "";
+                const overStock = !!invItem && line.qty > invItem.onHand;
                 return (
                 <div
                   key={`${line.itemName}-${i}`}
                   className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2 text-[12.5px] ${
                     i !== lines.length - 1 ? "border-b border-border-soft" : ""
-                  }`}
+                  } ${overStock ? "bg-critical-bg" : ""}`}
                 >
                   <div className="flex items-center gap-2">
                     <ItemPhoto imageUrl={invItem?.imageUrl ?? null} alt={line.itemName} size="sm" />
                     <span className="font-medium">{line.itemName}</span>
                   </div>
                   <div className="flex items-center gap-3 text-muted">
-                    <span>{line.qty} {unit}</span>
+                    <span>Qty req. {line.qty} {unit}</span>
+                    <span className={overStock ? "font-semibold text-critical-text" : ""}>
+                      Stock {invItem?.onHand ?? line.stock}
+                    </span>
+                    {line.stockStatus !== "OK" && (
+                      <Badge tone={stockStatusTone(line.stockStatus)} className="!px-2 !py-0.5">
+                        {line.stockStatus}
+                      </Badge>
+                    )}
                     <button
                       onClick={() => removeLine(i)}
                       aria-label={`Remove ${line.itemName}`}

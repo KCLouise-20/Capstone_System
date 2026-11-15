@@ -22,6 +22,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { AccountStatus, UserRole } from "@/lib/types";
 import type { SystemSettings } from "./queries";
 
+
 export interface MutationResult<T = void> {
   error?: string;
   data?: T;
@@ -674,13 +675,18 @@ export async function approveRelease(risNumber: string): Promise<MutationResult>
   // officer double-clicking) can both have this succeed, re-running
   // apply_release_stock_effect's stock deduction a second time and silently
   // overriding whatever the first action already decided.
-  const { data, error } = await supabase
+ const { data, error } = await supabase
     .from("releases")
     .update({
       status: "approved",
       approved_by: user?.id ?? null,
       approved_by_name: approver?.full_name ?? null,
       approved_by_email: approver?.email ?? null,
+      // Stamped in this same statement so the value is exactly the moment
+      // this Officer's action committed — the printed RIS reads this as
+      // "Approved on", which is different from release_date (the DATE
+      // NEEDED, submitted by the requester).
+      approved_at: new Date().toISOString(),
     })
     .eq("ris_number", risNumber)
     .eq("status", "pending")
@@ -701,7 +707,15 @@ export async function rejectRelease(risNumber: string, remarks?: string): Promis
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("releases")
-    .update({ status: "rejected", remarks: remarks?.trim() || null })
+    .update({
+      status: "rejected",
+      remarks: remarks?.trim() || null,
+      // Stamped here alongside remarks, since both describe this one
+      // decision — the reason and the moment it was made. Deliberately
+      // does NOT touch approved_by/approved_at (see the note above this
+      // function): a rejected row was never approved.
+      rejected_at: new Date().toISOString(),
+    })
     .eq("ris_number", risNumber)
     .eq("status", "pending")
     .select("ris_number");
@@ -712,11 +726,16 @@ export async function rejectRelease(risNumber: string, remarks?: string): Promis
 }
 
 /** Mark released. Same 23514 handling as approveRelease — relevant when a pending row is released directly without a separate approval step. */
+/** Mark released. Same 23514 handling as approveRelease — relevant when a pending row is released directly without a separate approval step. */
 export async function markReleaseReleased(risNumber: string): Promise<MutationResult> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("releases")
-    .update({ status: "released" })
+    .update({
+      status: "released",
+      // The hand-over moment, shown on the receipt as "Released on".
+      released_at: new Date().toISOString(),
+    })
     .eq("ris_number", risNumber)
     .eq("status", "approved")
     .select("ris_number");
@@ -725,6 +744,7 @@ export async function markReleaseReleased(risNumber: string): Promise<MutationRe
   if (!data || data.length === 0) return { error: ALREADY_ACTED_ON_ERROR };
   return {};
 }
+
 
 // ---------------------------------------------------------------------
 // Manage Users mutations

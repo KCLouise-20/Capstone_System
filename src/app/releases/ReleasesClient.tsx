@@ -7,6 +7,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge, requestStatusTone, stockStatusTone } from "@/components/ui/Badge";
 import { QrScannerModal } from "@/components/qr/QrScannerModal";
+import { todayPh } from "@/lib/datetime";
 import {
   createRisRequest,
   saveRisRequestDraft,
@@ -59,15 +60,43 @@ export function ReleasesClient({
   const [department, setDepartment] = useState(departmentNames[0] ?? "");
   const [scio, setScio] = useState("");
   const [purpose, setPurpose] = useState("");
-  const [releaseDate, setReleaseDate] = useState(() => new Date().toISOString().slice(0, 10));
+    // todayPh(), not toISOString() (UTC): between midnight and 8am Manila
+  // time the UTC date is still yesterday, so the form would open with a
+  // past date already selected and the guard below would flag it on load.
+  const [releaseDate, setReleaseDate] = useState(() => todayPh());
   const [formError, setFormError] = useState("");
+
+  // Today in Philippine time, YYYY-MM-DD — the same shape the date input
+  // uses, so it compares as a plain string. Manila-pinned to match
+  // datetime.ts, so the client and the server's check agree.
+  const today = todayPh();
+  const releaseDateInPast = !!releaseDate && releaseDate < today;
+
 
   const [actioningRisNo, setActioningRisNo] = useState<string | null>(null);
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
 
-  function addLine() {
+    function addLine() {
     const item = inventoryItems.find((i) => i.itemName === pendingItem);
     if (!item || pendingQty <= 0) return;
+
+    // Hard block, same rule as the Faculty side: never accept a line whose
+    // running total exceeds stock on hand. release_items merges a repeated
+    // item into one row (unique (release_id, item_id)), so the existing
+    // line's quantity has to count — otherwise adding 20 twice against a
+    // stock of 32 would slip through.
+    const existingQty = lines.find((l) => l.itemName === item.itemName)?.qty ?? 0;
+    const totalRequested = existingQty + pendingQty;
+    if (totalRequested > item.onHand) {
+      setFormError(
+        existingQty > 0
+          ? `Only ${item.onHand} ${item.unit} of ${item.itemName} are on hand, and ${existingQty} ${item.unit} ${existingQty === 1 ? "is" : "are"} already on this RIS. Reduce the quantity.`
+          : `Only ${item.onHand} ${item.unit} of ${item.itemName} ${item.onHand === 1 ? "is" : "are"} on hand. Reduce the quantity.`,
+      );
+      return;
+    }
+
+    setFormError("");
     // Merge into an existing line for the same item — release_items has a
     // unique (release_id, item_id) constraint, so two rows for one item
     // would fail the insert outright.
@@ -83,6 +112,7 @@ export function ReleasesClient({
     setPendingQty(1);
   }
 
+
   function removeLine(index: number) {
     setLines((prev) => prev.filter((_, i) => i !== index));
   }
@@ -96,6 +126,14 @@ export function ReleasesClient({
   function submitForApproval() {
     if (!department.trim() || lines.length === 0) {
       setFormError("Department and at least one item to release are required.");
+      return;
+    }
+    if (!releaseDate) {
+      setFormError("Set the release date.");
+      return;
+    }
+    if (releaseDateInPast) {
+      setFormError("The release date can't be in the past. Pick today or a later date.");
       return;
     }
 
@@ -171,24 +209,36 @@ export function ReleasesClient({
   );
 
   function openDocument(r: RisRecord, opts?: { verified?: boolean }) {
-    setRisScanVerified(Boolean(opts?.verified));
-    setViewingRis({
-      refNo: r.risNo,
-      department: r.department,
-      date: r.date,
-      status: r.status,
-      scio: r.scio,
-      purpose: r.purpose,
-      items: r.items.map((it) => ({
-        itemName: it.itemName,
-        qty: it.qtyRequested,
-        unit: inventoryItems.find((i) => i.itemName === it.itemName)?.unit,
-        stockOnHand: it.stockOnHand,
-      })),
-      requestedBy: r.requestedBy,
-      approvedBy: r.approvedBy,
-    });
-  }
+  setRisScanVerified(Boolean(opts?.verified));
+  setViewingRis({
+    refNo: r.risNo,
+    department: r.department,
+    date: r.date,
+    status: r.status,
+    scio: r.scio,
+    purpose: r.purpose,
+    items: r.items.map((it) => ({
+      itemName: it.itemName,
+      qty: it.qtyRequested,
+      unit: inventoryItems.find((i) => i.itemName === it.itemName)?.unit,
+      stockOnHand: it.stockOnHand,
+    })),
+    requestedBy: r.requestedBy,
+    approvedBy: r.approvedBy,
+    // Whichever applies: a released row shows its hand-over date, an
+    // approved row its approval date, and pending/rejected/draft rows
+    // nothing at all (falls back to approvedAt in case a released row
+    // somehow has no released_at).
+        approvedOn:
+      r.status === "Released"
+        ? (r.releasedAt ?? r.approvedAt)
+        : r.status === "Rejected"
+          ? r.rejectedAt
+          : r.approvedAt,
+
+  });
+}
+
 
   // Scanning a requester's printed claim slip QR (see RisDocumentModal's
   // print output) — looked up against the full, live risRecords list (not
@@ -223,9 +273,15 @@ export function ReleasesClient({
             <input
               type="date"
               value={releaseDate}
+              min={today}
               onChange={(e) => setReleaseDate(e.target.value)}
               className="input"
             />
+            {releaseDateInPast && (
+              <span className="text-[11px] font-medium text-critical-text">
+                This date is in the past.
+              </span>
+            )}
           </Field>
           <Field label="Requested by (dept.)">
             <select value={department} onChange={(e) => setDepartment(e.target.value)} className="input">

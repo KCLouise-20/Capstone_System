@@ -50,6 +50,7 @@ import type {
  * consistent with any single rule, so expect a few items to show a
  * slightly different badge than they did under mock data.
  */
+
 export function computeStockStatus(stockQuantity: number, reorderLevel: number): StockStatus {
   if (stockQuantity <= 0) return "Critical";
   if (reorderLevel > 0 && stockQuantity < reorderLevel) {
@@ -942,6 +943,9 @@ interface ReleaseRow {
   scio: string | null;
   purpose: string | null;
   remarks: string | null;
+  approved_at: string | null;
+  released_at: string | null;
+  rejected_at: string | null;
   requested_by_name: string | null;
   approved_by_name: string | null;
   release_items:
@@ -971,14 +975,15 @@ export async function getRisRecords(): Promise<RisRecord[]> {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data } = await supabase
+    const { data } = await supabase
     .from("releases")
     .select(
-      "ris_number, department, release_date, status, scio, purpose, requested_by_name, approved_by_name, release_items(quantity, items(item_name, stock_quantity, reorder_level)), requester:requested_by(full_name), approver:approved_by(full_name)",
+      "ris_number, department, release_date, status, scio, purpose, requested_by_name, approved_by_name, approved_at, released_at, rejected_at, release_items(quantity, items(item_name, stock_quantity, reorder_level)), requester:requested_by(full_name), approver:approved_by(full_name)",
     )
     .or(`status.neq.draft${user ? `,requested_by.eq.${user.id}` : ""}`)
     .order("created_at", { ascending: false })
     .returns<ReleaseRow[]>();
+
 
   return (data ?? []).map((row) => {
     const items: RisItemLine[] = (row.release_items ?? []).map((line) => ({
@@ -1001,6 +1006,9 @@ export async function getRisRecords(): Promise<RisRecord[]> {
       // getDeliveries' receivedBy.
       requestedBy: row.requester?.full_name ?? row.requested_by_name ?? undefined,
       approvedBy: row.approver?.full_name ?? row.approved_by_name ?? undefined,
+      approvedAt: row.approved_at ?? undefined,
+      releasedAt: row.released_at ?? undefined,
+      rejectedAt: row.rejected_at ?? undefined,
     };
   });
 }
@@ -1016,17 +1024,18 @@ export async function getMyRequests(): Promise<SupplyRequest[]> {
   const { data } = await supabase
     .from("releases")
     .select(
-      "ris_number, release_date, status, remarks, approved_by_name, release_items(quantity, items(item_name, unit)), approver:approved_by(full_name)",
+      "ris_number, release_date, status, remarks, approved_by_name, approved_at, released_at, release_items(quantity, items(item_name, unit, stock_quantity)), approver:approved_by(full_name)",
     )
     .eq("requested_by", user.id)
     .order("created_at", { ascending: false })
     .returns<ReleaseRow[]>();
 
-  return (data ?? []).map((row) => {
+    return (data ?? []).map((row) => {
     const items: SupplyRequestItem[] = (row.release_items ?? []).map((line) => ({
       itemName: line.items?.item_name ?? "—",
       qty: Number(line.quantity),
       unit: line.items?.unit,
+      stockOnHand: Number(line.items?.stock_quantity ?? 0),
     }));
 
     return {
@@ -1036,7 +1045,18 @@ export async function getMyRequests(): Promise<SupplyRequest[]> {
       status: mapReleaseStatus(row.status),
       items,
       approvedBy: row.approver?.full_name ?? row.approved_by_name ?? undefined,
-      approvedOn: row.status === "approved" ? (row.release_date ?? undefined) : undefined,
+      // The date the Officer actually acted, NOT release_date (which is the
+      // date needed). Released rows report their hand-over date; approved
+      // rows their approval date; anything else (pending/rejected/draft)
+      // reports nothing, so the receipt shows no date line at all.
+          approvedOn:
+      row.status === "released"
+        ? (row.released_at ?? undefined)
+        : row.status === "approved"
+          ? (row.approved_at ?? undefined)
+          : row.status === "rejected"
+            ? (row.rejected_at ?? undefined)
+            : undefined,
       remarks: row.remarks ?? undefined,
     };
   });
