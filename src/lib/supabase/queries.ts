@@ -161,16 +161,18 @@ interface InventoryRow {
   description: string | null;
   unit: string;
   stock_quantity: number;
+  unit_cost: number | null;
   reorder_level: number;
   image_url: string | null;
   categories: { category_name: string } | null;
 }
 
+
 export async function getInventoryItems() {
   const supabase = await createClient();
   const { data } = await supabase
     .from("items")
-    .select("item_code, item_name, description, unit, stock_quantity, reorder_level, image_url, categories(category_name)")
+    .select("item_code, item_name, description, unit, stock_quantity, unit_cost, reorder_level, image_url, categories(category_name)")
     .order("item_code")
     .returns<InventoryRow[]>();
 
@@ -182,6 +184,7 @@ export async function getInventoryItems() {
     unit: row.unit,
     onHand: Number(row.stock_quantity),
     reorderLevel: Number(row.reorder_level),
+    unitCost: row.unit_cost == null ? null : Number(row.unit_cost),
     status: computeStockStatus(Number(row.stock_quantity), Number(row.reorder_level)),
     imageUrl: row.image_url,
   }));
@@ -206,7 +209,7 @@ export async function getInventoryItemsPage(
   const { data, count } = await supabase
     .from("items")
     .select(
-      "item_code, item_name, description, unit, stock_quantity, reorder_level, image_url, categories(category_name)",
+      "item_code, item_name, description, unit, stock_quantity, unit_cost, reorder_level, image_url, categories(category_name)",
       { count: "exact" },
     )
     .order("item_code")
@@ -221,6 +224,7 @@ export async function getInventoryItemsPage(
     unit: row.unit,
     onHand: Number(row.stock_quantity),
     reorderLevel: Number(row.reorder_level),
+    unitCost: row.unit_cost == null ? null : Number(row.unit_cost),
     status: computeStockStatus(Number(row.stock_quantity), Number(row.reorder_level)),
     imageUrl: row.image_url,
   }));
@@ -296,11 +300,20 @@ function computeDaysToConsume(balance: number, cumulativeIssued: number, firstDa
 export async function getStockCardLedger(itemCode: string): Promise<StockCardLedgerRow[]> {
   const supabase = await createClient();
 
-  const { data: item } = await supabase
+    const { data: item } = await supabase
     .from("items")
-    .select("item_id, stock_quantity")
+    .select("item_id, stock_quantity, item_code, item_name, unit, reorder_level, image_url")
     .eq("item_code", itemCode)
-    .maybeSingle<{ item_id: number; stock_quantity: number }>();
+    .maybeSingle<{
+      item_id: number;
+      stock_quantity: number;
+      item_code: string;
+      item_name: string;
+      unit: string;
+      reorder_level: number;
+      image_url: string | null;
+    }>();
+
   if (!item) return [];
 
   const [{ data: receipts }, { data: issues }] = await Promise.all([
@@ -455,7 +468,7 @@ export async function getStockSummary(): Promise<StockSummaryRow[]> {
   const [{ data: items }, { data: deliveryLines }] = await Promise.all([
     supabase
       .from("items")
-      .select("item_id, item_code, item_name, unit, stock_quantity")
+      .select("item_id, item_code, item_name, unit, stock_quantity, reorder_level, image_url")
       .order("item_code")
       .returns<{ item_id: number; item_code: string; item_name: string; unit: string; stock_quantity: number }[]>(),
     supabase

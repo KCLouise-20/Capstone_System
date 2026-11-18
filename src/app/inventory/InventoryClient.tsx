@@ -42,6 +42,7 @@ interface ItemFormState {
   category: string;
   unit: string;
   onHand: string;
+  unitCost: string;
   reorderLevel: string;
   imageUrl: string | null;
 }
@@ -151,6 +152,7 @@ export function InventoryClient({
       category: item.category,
       unit: item.unit,
       onHand: String(item.onHand),
+      unitCost: item.unitCost !== null && item.unitCost !== undefined ? String(item.unitCost) : "0",
       reorderLevel: String(item.reorderLevel),
       imageUrl: item.imageUrl,
     });
@@ -196,7 +198,9 @@ export function InventoryClient({
       unit: form.unit,
       onHand,
       reorderLevel,
+      unitCost: Number(form.unitCost) || 0,
       imageUrl: form.imageUrl,
+
     };
 
     startTransition(async () => {
@@ -463,7 +467,7 @@ export function InventoryClient({
                   className="size-3.5"
                 />
               </th>
-              {["Item code", "Item name", "Category", "Unit", "On hand", "Reorder lvl", "Status"].map(
+              {["Item code", "Item name", "Category", "Unit", "Unit  Cost", "On hand", "Reorder lvl", "Status"].map(
                 (h) => (
                   <th
                     key={h}
@@ -507,8 +511,13 @@ export function InventoryClient({
                   </td>
                   <td className={`${cell} text-muted`}>{item.category}</td>
                   <td className={`${cell} text-muted`}>{item.unit}</td>
-                  <td className={`${cell} font-bold`}>{item.onHand}</td>
-                  <td className={`${cell} text-muted`}>{item.reorderLevel}</td>
+                  <td className={`${cell} text-muted`}>
+                    {item.unitCost == null
+                     ? "—"
+                   : `₱${item.unitCost.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                    </td>
+                    <td className={`${cell} font-bold`}>{item.onHand}</td>
+                    <td className={`${cell} text-muted`}>{item.reorderLevel}</td>
                   <td className={cell}>
                     <Badge tone={stockStatusTone(item.status)}>{item.status}</Badge>
                   </td>
@@ -695,6 +704,16 @@ export function InventoryClient({
                 className="input"
               />
             </Field>
+            <Field label="Unit cost (₱)">
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={form.unitCost}
+                onChange={(e) => setForm((f) => ({ ...f, unitCost: e.target.value }))}
+                className="input"
+              />
+            </Field>
           </div>
           <div className="flex items-center justify-between rounded-lg border border-border-soft bg-background px-3 py-2.5 text-[12.5px]">
             <span className="text-muted">Resulting status</span>
@@ -838,6 +857,7 @@ function emptyForm(
     category: categoryRefs[0]?.name ?? "",
     unit: unitsOfMeasure[0]?.name ?? "",
     onHand: "0",
+    unitCost: "0",
     reorderLevel: "0",
     imageUrl: null,
   };

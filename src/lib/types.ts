@@ -14,6 +14,7 @@ export interface InventoryItem {
   category: string;
   unit: string;
   onHand: number;
+  unitCost?: number | null;
   reorderLevel: number;
   status: StockStatus;
   imageUrl: string | null;

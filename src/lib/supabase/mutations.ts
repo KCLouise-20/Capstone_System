@@ -150,7 +150,7 @@ export async function createInventoryItem(input: InventoryItemInput): Promise<Mu
     stock_quantity: input.onHand,
     reorder_level: input.reorderLevel,
     unit_cost: input.unitCost ?? 0,
-    image_url: input.imageUrl ?? null,
+    image_url: input.imageUrl ?? null, 
     status: "active",
   });
 
