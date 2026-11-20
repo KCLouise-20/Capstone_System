@@ -34,7 +34,6 @@ export function RequestSuppliesClient({
 }: {
   myRequests: SupplyRequest[];
   inventoryItems: InventoryItem[];
-  /** The signed-in user's own department, assigned by Admin — not editable here (see submitSupplyRequest). */
   department: string;
   requestedBy: string;
   letterhead: DocumentLetterhead;
