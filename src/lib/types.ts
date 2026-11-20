@@ -76,11 +76,15 @@ export interface RisRecord {
   purpose: string;
   items: RisItemLine[];
   requestedBy?: string;
+  requestedByDesignation?: string;
   approvedBy?: string;
+  approvedByDesignation?: string;
   approvedAt?: string;
   releasedAt?: string;
   rejectedAt?: string;
+  remarks?: string;
 }
+
 
 export interface SupplyRequestItem {
   itemName: string;
@@ -96,10 +100,12 @@ export interface SupplyRequest {
   status: RequestStatus;
   items: SupplyRequestItem[];
   approvedBy?: string;
-  /** When the Officer approved or released it — see getMyRequests. */
+  /** The approver's role name, used as the RIS Designation. */
+  approvedByDesignation?: string;
   approvedOn?: string;
   remarks?: string;
 }
+
 
 export interface SystemUser {
   fullName: string;

@@ -17,6 +17,8 @@ import { ItemPhoto } from "@/components/inventory/ItemPhoto";
 import { todayPh } from "@/lib/datetime";
 import type { InventoryItem, StockStatus, SupplyRequest } from "@/lib/types";
 import type { DocumentLetterhead } from "@/lib/letterhead";
+import type { SystemSettings } from "@/lib/supabase/queries";
+
 
 interface DraftLine {
   itemName: string;
@@ -30,13 +32,19 @@ export function RequestSuppliesClient({
   inventoryItems,
   department,
   requestedBy,
+  role,
   letterhead,
+  settings,
 }: {
   myRequests: SupplyRequest[];
   inventoryItems: InventoryItem[];
+  /** The signed-in user's own department, assigned by Admin — not editable here (see submitSupplyRequest). */
   department: string;
   requestedBy: string;
+  role: string;
   letterhead: DocumentLetterhead;
+  /** Appendix 63 header values: Delivery Unit, Fund Cluster, RC Code, PO No. */
+  settings: SystemSettings | null;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -263,16 +271,28 @@ export function RequestSuppliesClient({
       department,
       date: r.date,
       status: r.status,
+      deliveryUnit: settings?.deliveryUnit,
+      fundCluster: settings?.fundCluster,
+      responsibilityCenterCode: settings?.responsibilityCenterCode,
+      poNo: settings?.poNo,
       items: r.items.map((it) => ({
         itemName: it.itemName,
         qty: it.qty,
         unit: it.unit,
         stockOnHand: it.stockOnHand,
+        // undefined when stock was never recorded, so the receipt prints
+        // neither Yes nor No instead of claiming stock was unavailable.
+        stockAvailable: it.stockOnHand == null ? undefined : it.stockOnHand >= it.qty,
       })),
       requestedBy,
+      requestedByDesignation: role,
       approvedBy: r.approvedBy,
-      // Was omitted entirely, which is why the receipt had no date line.
-      approvedOn: r.approvedOn,
+      approvedByDesignation: r.approvedByDesignation,
+      issuedBy: r.approvedBy,
+      issuedByDesignation: r.approvedByDesignation,
+      receivedBy: requestedBy,
+      receivedByDesignation: role,
+
       remarks: r.remarks,
     });
   }

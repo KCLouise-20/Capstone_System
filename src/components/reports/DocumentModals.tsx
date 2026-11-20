@@ -40,17 +40,35 @@ export interface RisDocumentRecord {
   status: RequestStatus;
   scio?: string;
   purpose?: string;
-  items: { itemName: string; qty: number; unit?: string; stockOnHand?: number }[];
+  // Appendix 63 header block
+  deliveryUnit?: string;
+  fundCluster?: string;
+  responsibilityCenterCode?: string;
+  poNo?: string;
+  items: {
+    itemName: string;
+    qty: number;
+    unit?: string;
+    stockOnHand?: number;
+    stockNo?: string;
+    /** Computed: stockOnHand >= qty. undefined when stock was never measured. */
+    stockAvailable?: boolean;
+    /** Free-text note for the Issue column on the printed form. */
+    remarks?: string;
+  }[];
   requestedBy?: string;
+  requestedByDesignation?: string;
   approvedBy?: string;
-  /**
-   * When the Officer approved or released this — printed so the receipt
-   * proves the date of action, not just that it happened. Comes from
-   * releases.approved_at / released_at; absent for pending, rejected and
-   * draft rows, so the date line is omitted entirely for those.
-   */
+  approvedByDesignation?: string;
+  issuedBy?: string;
+  issuedByDesignation?: string;
+  receivedBy?: string;
+  receivedByDesignation?: string;
   approvedOn?: string;
+  issuedOn?: string;
+  /** Record-level notes, printed in the header block. */
   remarks?: string;
+  
 }
 
 
@@ -223,56 +241,151 @@ function RisDocumentContent({
         subtitle={`RIS No. ${record.refNo}`}
         generatedOn={now()}
       />
-            <div className="mb-3 grid grid-cols-3 gap-4 text-[12px]">
-        {record.department && (
-          <div>
-            <span className="font-semibold">Department: </span>
-            {record.department}
+        <div className="mb-3 text-[11.5px]">
+        <div className="grid grid-cols-2 gap-x-8 gap-y-0.5">
+          <div className="flex gap-1">
+            <span className="font-bold">Entity Name:</span>
+            <span className="flex-1 border-b border-dotted border-black">{letterhead.institutionName}</span>
           </div>
-        )}
-        {record.scio && (
-          <div>
-            <span className="font-semibold">SCIO: </span>
-            {record.scio}
+          <div className="flex gap-1">
+            <span className="font-bold">Fund Cluster:</span>
+            <span className="flex-1 border-b border-dotted border-black">{record.fundCluster ?? ""}</span>
           </div>
-        )}
-        <div>
-          <span className="font-semibold">Status: </span>
-          {record.status}
+          <div className="flex gap-1">
+            <span className="font-bold">Office:</span>
+            <span className="flex-1 border-b border-dotted border-black">{letterhead.officeName}</span>
+          </div>
+          <div className="flex gap-1">
+            <span className="font-bold">Responsibility Center Code:</span>
+            <span className="flex-1 border-b border-dotted border-black">{record.responsibilityCenterCode ?? ""}</span>
+          </div>
+          <div className="flex gap-1">
+            <span className="font-bold">Delivery Unit:</span>
+            <span className="flex-1 border-b border-dotted border-black">{record.deliveryUnit ?? ""}</span>
+          </div>
+          <div className="flex gap-1">
+            <span className="font-bold">RIS No.:</span>
+            <span className="flex-1 border-b border-dotted border-black">{record.refNo}</span>
+          </div>
+          <div className="flex gap-1">
+            <span className="font-bold">Status:</span>
+            <span className="flex-1">{record.status}</span>
+          </div>
+          <div className="flex gap-1">
+            <span className="font-bold">PO No.:</span>
+            <span className="flex-1 border-b border-dotted border-black">{record.poNo ?? ""}</span>
+          </div>
         </div>
-        {record.approvedOn && (
-          <div>
-            <span className="font-semibold">
-              {record.status === "Released" ? "Released on: " : record.status === "Rejected" ? "Rejected on: " : "Approved on: "}
-            </span>
-            {formatPhDate(record.approvedOn)}
-          </div>
-        )}
-        {record.purpose && (
-          <div className="col-span-3">
-            <span className="font-semibold">Purpose: </span>
-            {record.purpose}
-          </div>
-        )}
         {record.remarks && (
-          <div className="col-span-3">
-            <span className="font-semibold">Remarks: </span>
-            {record.remarks}
+          <div className="mt-1.5 flex gap-1">
+            <span className="font-bold">Remarks:</span>
+            <span className="flex-1">{record.remarks}</span>
           </div>
         )}
       </div>
 
-      <PrintTable
-        headers={["Item", "Qty", "Stock on Hand"]}
-        rows={record.items.map((it) => [`${it.itemName}${it.unit ? ` (${it.unit})` : ""}`, it.qty, it.stockOnHand ?? "—"])}
-      />
-      <SignatureBlock
-        lines={[
-          { label: "Requested by", name: record.requestedBy },
-          { label: "Approved by", name: record.approvedBy },
-          { label: "Received by" },
-        ]}
-      />
+
+            <table className="w-full border-collapse text-[11px]">
+        <thead>
+          <tr>
+            <th rowSpan={2} className="border border-black px-1.5 py-1 text-left font-bold">Stock No</th>
+            <th rowSpan={2} className="border border-black px-1.5 py-1 text-left font-bold">Unit</th>
+            <th rowSpan={2} className="border border-black px-1.5 py-1 text-left font-bold">Item / Description</th>
+            <th colSpan={2} className="border border-black px-1.5 py-1 text-center font-bold italic">Requisition</th>
+            <th colSpan={2} className="border border-black px-1.5 py-1 text-center font-bold italic">Stock Available?</th>
+            <th colSpan={2} className="border border-black px-1.5 py-1 text-center font-bold italic">Issue</th>
+          </tr>
+          <tr>
+            <th className="border border-black px-1.5 py-1 text-left font-bold">Quantity</th>
+            <th className="border border-black px-1.5 py-1 text-left font-bold">&nbsp;</th>
+            <th className="border border-black px-1.5 py-1 text-left font-bold">Yes</th>
+            <th className="border border-black px-1.5 py-1 text-left font-bold">No</th>
+            <th className="border border-black px-1.5 py-1 text-left font-bold">Quantity</th>
+            <th className="border border-black px-1.5 py-1 text-left font-bold">Remarks</th>
+          </tr>
+        </thead>
+        <tbody>
+          {record.items.map((it, i) => (
+            <tr key={i}>
+              <td className="border border-black px-1.5 py-1">{it.stockNo ?? ""}</td>
+              <td className="border border-black px-1.5 py-1">{it.unit ?? ""}</td>
+              <td className="border border-black px-1.5 py-1">{it.itemName}</td>
+              <td className="border border-black px-1.5 py-1 text-right">{it.qty.toFixed(2)}</td>
+              <td className="border border-black px-1.5 py-1">&nbsp;</td>
+              <td className="border border-black px-1.5 py-1 text-center">{it.stockAvailable === true ? "Yes" : ""}</td>
+              <td className="border border-black px-1.5 py-1 text-center">{it.stockAvailable === false ? "No" : ""}</td>
+              <td className="border border-black px-1.5 py-1 text-right">
+                {it.stockAvailable === true ? it.qty.toFixed(2) : ""}
+              </td>
+              <td className="border border-black px-1.5 py-1">{it.remarks ?? ""}</td>
+            </tr>
+          ))}
+          {record.items.length === 0 && (
+            <tr>
+              <td colSpan={9} className="border border-black px-2 py-4 text-center">No records.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      {record.purpose && (
+        <div className="mt-3 flex gap-1 text-[11.5px]">
+          <span className="font-bold">Purpose:</span>
+          <span className="flex-1 border-b border-dotted border-black">{record.purpose}</span>
+        </div>
+      )}
+      <div className="mt-6 grid grid-cols-4 border border-black text-[10.5px]">
+      </div>
+            <div className="mt-6 grid grid-cols-4 border border-black text-[10.5px]">
+        {[
+          {
+    head: "Requested by:",
+    name: record.requestedBy,
+    designation: record.requestedByDesignation,
+    date: "",
+  },
+  {
+    head: "Approved by:",
+    name: record.approvedBy,
+    designation: record.approvedByDesignation,
+    date: record.approvedOn ? formatPhDate(record.approvedOn) : "",
+  },
+    // Only a released record has been issued. Until then this cell
+    // prints blank, regardless of what the caller passed in.
+  {
+    head: "Issued by:",
+    name: record.status === "Released" ? record.issuedBy : undefined,
+    designation: record.status === "Released" ? record.issuedByDesignation : undefined,
+    date: record.status === "Released" ? (record.issuedOn ?? "") : "",
+  },
+  {
+    head: "Received by:",
+    name: record.receivedBy,
+    designation: record.receivedByDesignation,
+    date: "",
+  },
+        ].map((col) => (
+          <div key={col.head} className="flex flex-col border-r border-black last:border-r-0">
+            <div className="border-b border-black px-2 py-1 font-bold">{col.head}</div>
+            {[
+              { label: "Signature:", value: "" },
+              { label: "Printed Name:", value: col.name },
+              { label: "Designation:", value: col.designation },
+              { label: "Date:", value: col.date },
+            ].map((row) => (
+              <div key={row.label} className="flex gap-1 border-b border-black px-2 py-1 last:border-b-0">
+                <span className="w-[62px] shrink-0 font-bold">{row.label}</span>
+                <span className="flex-1">{row.value ?? ""}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-5 flex justify-around text-[11px] font-bold uppercase">
+        <span>RIS DATE RECEIVED: __________________</span>
+        <span>RIS DATE RETURNED: __________________</span>
+      </div>
+
       {qrUrl && (
         <div className="mt-6 flex flex-col items-center gap-1 border-t border-black pt-3 text-center">
           {/* eslint-disable-next-line @next/next/no-img-element -- same

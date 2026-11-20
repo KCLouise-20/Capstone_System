@@ -219,6 +219,28 @@ export function SettingsClient({
               COA accounting classification — printed only on the Stock Card report, next to Entity Name.
             </span>
           </Field>
+          <Field label="Delivery unit">
+             <input
+              value={form.deliveryUnit}
+              onChange={(e) => setForm((f) => ({ ...f, deliveryUnit: e.target.value }))}
+              placeholder="e.g. Supply and Property Management Office"
+              className="input placeholder:text-muted-2"/>
+          </Field>
+          <Field label="Responsibility center code">
+             <input
+              value={form.responsibilityCenterCode}
+              onChange={(e) => setForm((f) => ({ ...f, responsibilityCenterCode: e.target.value }))}
+              className="input placeholder:text-muted-2"
+                />
+   
+            </Field>
+            <Field label="PO no.">
+              <input
+              value={form.poNo}
+              onChange={(e) => setForm((f) => ({ ...f, poNo: e.target.value }))}
+              className="input"
+                />
+            </Field>
 
           <div className="grid grid-cols-1 gap-3 border-t border-border-soft pt-3.5 sm:grid-cols-2">
             <Field label="Fiscal year start">

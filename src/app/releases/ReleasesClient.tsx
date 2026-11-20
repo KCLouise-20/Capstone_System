@@ -22,6 +22,8 @@ import { RisDocumentPanel, type RisDocumentRecord } from "@/components/reports/D
 import { ItemPhoto } from "@/components/inventory/ItemPhoto";
 import type { InventoryItem, RisRecord, StockStatus } from "@/lib/types";
 import type { DocumentLetterhead } from "@/lib/letterhead";
+import type { SystemSettings } from "@/lib/supabase/queries";
+
 
 interface DraftLine {
   itemName: string;
@@ -35,11 +37,13 @@ export function ReleasesClient({
   inventoryItems,
   departmentNames,
   letterhead,
+  settings,
 }: {
   risRecords: RisRecord[];
   inventoryItems: InventoryItem[];
   departmentNames: string[];
   letterhead: DocumentLetterhead;
+  settings: SystemSettings | null;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -211,30 +215,39 @@ export function ReleasesClient({
   function openDocument(r: RisRecord, opts?: { verified?: boolean }) {
   setRisScanVerified(Boolean(opts?.verified));
   setViewingRis({
-    refNo: r.risNo,
-    department: r.department,
-    date: r.date,
-    status: r.status,
-    scio: r.scio,
-    purpose: r.purpose,
-    items: r.items.map((it) => ({
-      itemName: it.itemName,
-      qty: it.qtyRequested,
-      unit: inventoryItems.find((i) => i.itemName === it.itemName)?.unit,
-      stockOnHand: it.stockOnHand,
-    })),
-    requestedBy: r.requestedBy,
-    approvedBy: r.approvedBy,
-    // Whichever applies: a released row shows its hand-over date, an
-    // approved row its approval date, and pending/rejected/draft rows
-    // nothing at all (falls back to approvedAt in case a released row
-    // somehow has no released_at).
-        approvedOn:
-      r.status === "Released"
-        ? (r.releasedAt ?? r.approvedAt)
-        : r.status === "Rejected"
-          ? r.rejectedAt
-          : r.approvedAt,
+      refNo: r.risNo,
+      department: r.department,
+      date: r.date,
+      status: r.status,
+      scio: r.scio,
+      purpose: r.purpose,
+      deliveryUnit: settings?.deliveryUnit,
+      fundCluster: settings?.fundCluster,
+      responsibilityCenterCode: settings?.responsibilityCenterCode,
+      poNo: settings?.poNo,
+      items: r.items.map((it) => ({
+        itemName: it.itemName,
+        qty: it.qtyRequested,
+        unit: inventoryItems.find((i) => i.itemName === it.itemName)?.unit,
+        stockOnHand: it.stockOnHand,
+        stockAvailable: it.stockOnHand == null ? undefined : it.stockOnHand >= it.qtyRequested,
+      })),
+      requestedBy: r.requestedBy,
+      approvedBy: r.approvedBy,
+      requestedByDesignation: r.requestedByDesignation,
+      approvedByDesignation: r.approvedByDesignation,
+      // The schema records one Officer per release, not separate approve/issue
+      // actors, so both columns read the same person — and the requester
+      // collects, so Received by mirrors Requested by.
+      receivedBy: undefined,
+      receivedByDesignation: undefined,
+      approvedOn:
+        r.status === "Released"
+          ? (r.releasedAt ?? r.approvedAt)
+          : r.status === "Rejected"
+            ? r.rejectedAt
+            : r.approvedAt,
+          remarks: r.remarks,
 
   });
 }

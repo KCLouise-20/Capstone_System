@@ -25,6 +25,9 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   address: "",
   contactInfo: "",
   fundCluster: "",
+  deliveryUnit: "",
+  responsibilityCenterCode: "",
+  poNo: "",
 };
 
 export default async function SystemSettingsPage() {

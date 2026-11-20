@@ -18,7 +18,9 @@ export default async function RequestSuppliesPage() {
         inventoryItems={inventoryItems}
         department={profile?.department ?? "—"}
         requestedBy={profile?.fullName ?? ""}
+        role={profile?.role ?? ""}
         letterhead={resolveLetterhead(settings)}
+        settings={settings}
       />
     </AppShell>
   );

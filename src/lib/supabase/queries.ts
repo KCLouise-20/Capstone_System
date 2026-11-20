@@ -846,6 +846,9 @@ export interface SystemSettings {
   contactInfo: string;
   /** COA accounting classification (migration 25) — printed on the Stock Card only, matching the legacy government form's "Fund Cluster" field (e.g. "IGI"). */
   fundCluster: string;
+  deliveryUnit: string;
+  responsibilityCenterCode: string;
+  poNo: string;
 }
 
 /**
@@ -858,8 +861,8 @@ export async function getSystemSettings(): Promise<SystemSettings | null> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("system_settings")
-    .select(
-      "institution_name, system_title, fiscal_year_start, currency, low_stock_threshold_percent, category_health_red_max, category_health_yellow_max, category_health_blue_max, office_name, address, contact_info, fund_cluster",
+        .select(
+      "institution_name, system_title, fiscal_year_start, currency, low_stock_threshold_percent, category_health_red_max, category_health_yellow_max, category_health_blue_max, office_name, address, contact_info, fund_cluster, delivery_unit, responsibility_center_code, po_no",
     )
     .eq("id", true)
     .maybeSingle<{
@@ -875,7 +878,11 @@ export async function getSystemSettings(): Promise<SystemSettings | null> {
       address: string | null;
       contact_info: string | null;
       fund_cluster: string | null;
+      delivery_unit: string | null;
+      responsibility_center_code: string | null;
+      po_no: string | null;
     }>();
+
 
   if (!data) return null;
   return {
@@ -891,6 +898,9 @@ export async function getSystemSettings(): Promise<SystemSettings | null> {
     address: data.address ?? "",
     contactInfo: data.contact_info ?? "",
     fundCluster: data.fund_cluster ?? "",
+    deliveryUnit: data.delivery_unit ?? "",
+    responsibilityCenterCode: data.responsibility_center_code ?? "",
+    poNo: data.po_no ?? "",
   };
 }
 
@@ -967,9 +977,10 @@ interface ReleaseRow {
         items: { item_name: string; stock_quantity: number; reorder_level: number; unit?: string } | null;
       }[]
     | null;
-  approver: { full_name: string } | null;
-  requester?: { full_name: string } | null;
+  approver: { full_name: string; roles: { name: string } | null } | null;
+  requester?: { full_name: string; roles: { name: string } | null } | null;
 }
+
 
 /**
  * Officer-facing view: every release/RIS record, newest first. Excludes
@@ -991,7 +1002,7 @@ export async function getRisRecords(): Promise<RisRecord[]> {
     const { data } = await supabase
     .from("releases")
     .select(
-      "ris_number, department, release_date, status, scio, purpose, requested_by_name, approved_by_name, approved_at, released_at, rejected_at, release_items(quantity, items(item_name, stock_quantity, reorder_level)), requester:requested_by(full_name), approver:approved_by(full_name)",
+      "ris_number, department, release_date, status, scio, purpose, remarks, requested_by_name, approved_by_name, approved_at, released_at, rejected_at, release_items(quantity, items(item_name, stock_quantity, reorder_level)), requester:requested_by(full_name, roles(name)), approver:approved_by(full_name, roles(name))",
     )
     .or(`status.neq.draft${user ? `,requested_by.eq.${user.id}` : ""}`)
     .order("created_at", { ascending: false })
@@ -1018,10 +1029,14 @@ export async function getRisRecords(): Promise<RisRecord[]> {
       // the account is deleted and the join goes null — same pattern as
       // getDeliveries' receivedBy.
       requestedBy: row.requester?.full_name ?? row.requested_by_name ?? undefined,
+      requestedByDesignation: row.requester?.roles?.name ?? undefined,
       approvedBy: row.approver?.full_name ?? row.approved_by_name ?? undefined,
+      approvedByDesignation: row.approver?.roles?.name ?? undefined,
       approvedAt: row.approved_at ?? undefined,
       releasedAt: row.released_at ?? undefined,
       rejectedAt: row.rejected_at ?? undefined,
+      remarks: row.remarks ?? undefined,
+
     };
   });
 }
@@ -1037,7 +1052,7 @@ export async function getMyRequests(): Promise<SupplyRequest[]> {
   const { data } = await supabase
     .from("releases")
     .select(
-      "ris_number, release_date, status, remarks, approved_by_name, approved_at, released_at, release_items(quantity, items(item_name, unit, stock_quantity)), approver:approved_by(full_name)",
+      "ris_number, release_date, status, remarks, approved_by_name, approved_at, released_at, rejected_at, release_items(quantity, items(item_name, unit, stock_quantity)), approver:approved_by(full_name, roles(name))",
     )
     .eq("requested_by", user.id)
     .order("created_at", { ascending: false })
@@ -1058,6 +1073,8 @@ export async function getMyRequests(): Promise<SupplyRequest[]> {
       status: mapReleaseStatus(row.status),
       items,
       approvedBy: row.approver?.full_name ?? row.approved_by_name ?? undefined,
+      approvedByDesignation: row.approver?.roles?.name ?? undefined,
+
       // The date the Officer actually acted, NOT release_date (which is the
       // date needed). Released rows report their hand-over date; approved
       // rows their approval date; anything else (pending/rejected/draft)
