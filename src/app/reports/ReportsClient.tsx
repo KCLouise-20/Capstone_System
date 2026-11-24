@@ -62,6 +62,10 @@ export interface RisFormRecord {
   items: { itemName: string; qty: number; stockOnHand?: number }[];
   requestedBy?: string;
   approvedBy?: string;
+  approvedByDesignation?: string;
+  issuedBy?: string;
+  issuedByDesignation?: string;
+  releasedAt?: string;
   remarks?: string;
 }
 
@@ -142,6 +146,9 @@ export function ReportsClient({
         })),
         requestedBy: ris.requestedBy,
         approvedBy: ris.approvedBy,
+        issuedBy: ris.status === "Released" ? ris.issuedBy : undefined,
+        issuedByDesignation: ris.status === "Released" ? ris.issuedByDesignation : undefined,
+        issuedOn: ris.status === "Released" ? ris.releasedAt : undefined,
         remarks: ris.remarks,
       });
     }

@@ -355,7 +355,10 @@ function RisDocumentContent({
     head: "Issued by:",
     name: record.status === "Released" ? record.issuedBy : undefined,
     designation: record.status === "Released" ? record.issuedByDesignation : undefined,
-    date: record.status === "Released" ? (record.issuedOn ?? "") : "",
+    date:
+      record.status === "Released" && record.issuedOn
+        ? formatPhDate(record.issuedOn)
+        : "",
   },
   {
     head: "Received by:",

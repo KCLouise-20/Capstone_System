@@ -81,6 +81,8 @@ export interface RisRecord {
   approvedByDesignation?: string;
   approvedAt?: string;
   releasedAt?: string;
+  issuedBy?: string;
+  issuedByDesignation?: string;
   rejectedAt?: string;
   remarks?: string;
 }

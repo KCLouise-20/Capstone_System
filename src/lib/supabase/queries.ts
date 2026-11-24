@@ -970,7 +970,12 @@ interface ReleaseRow {
   released_at: string | null;
   rejected_at: string | null;
   requested_by_name: string | null;
+  requested_by_designation: string | null;
   approved_by_name: string | null;
+  approved_by_designation: string | null;
+  released_by_name: string | null;
+  released_by_designation: string | null;
+  
   release_items:
     | {
         quantity: number;
@@ -1002,7 +1007,7 @@ export async function getRisRecords(): Promise<RisRecord[]> {
     const { data } = await supabase
     .from("releases")
     .select(
-      "ris_number, department, release_date, status, scio, purpose, remarks, requested_by_name, approved_by_name, approved_at, released_at, rejected_at, release_items(quantity, items(item_name, stock_quantity, reorder_level)), requester:requested_by(full_name, roles(name)), approver:approved_by(full_name, roles(name))",
+      "ris_number, department, release_date, status, scio, purpose, remarks, requested_by_name, requested_by_designation, approved_by_name, approved_by_designation, approved_at, released_at, rejected_at, released_by_name, released_by_designation, release_items(quantity, items(item_name, stock_quantity, reorder_level)), requester:requested_by(full_name, roles(name)), approver:approved_by(full_name, roles(name))",
     )
     .or(`status.neq.draft${user ? `,requested_by.eq.${user.id}` : ""}`)
     .order("created_at", { ascending: false })
@@ -1029,11 +1034,13 @@ export async function getRisRecords(): Promise<RisRecord[]> {
       // the account is deleted and the join goes null — same pattern as
       // getDeliveries' receivedBy.
       requestedBy: row.requester?.full_name ?? row.requested_by_name ?? undefined,
-      requestedByDesignation: row.requester?.roles?.name ?? undefined,
+      requestedByDesignation: row.requester?.roles?.name ?? row.requested_by_designation ?? undefined,
       approvedBy: row.approver?.full_name ?? row.approved_by_name ?? undefined,
-      approvedByDesignation: row.approver?.roles?.name ?? undefined,
+      approvedByDesignation: row.approver?.roles?.name ?? row.approved_by_designation ?? undefined,
       approvedAt: row.approved_at ?? undefined,
       releasedAt: row.released_at ?? undefined,
+      issuedBy: row.released_by_name ?? undefined,
+      issuedByDesignation: row.released_by_designation ?? undefined,
       rejectedAt: row.rejected_at ?? undefined,
       remarks: row.remarks ?? undefined,
 

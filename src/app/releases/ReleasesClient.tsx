@@ -233,23 +233,20 @@ export function ReleasesClient({
         stockAvailable: it.stockOnHand == null ? undefined : it.stockOnHand >= it.qtyRequested,
       })),
       requestedBy: r.requestedBy,
-      approvedBy: r.approvedBy,
       requestedByDesignation: r.requestedByDesignation,
+      approvedBy: r.approvedBy,
       approvedByDesignation: r.approvedByDesignation,
-      // The schema records one Officer per release, not separate approve/issue
-      // actors, so both columns read the same person — and the requester
-      // collects, so Received by mirrors Requested by.
-      receivedBy: undefined,
-      receivedByDesignation: undefined,
-      approvedOn:
-        r.status === "Released"
-          ? (r.releasedAt ?? r.approvedAt)
-          : r.status === "Rejected"
-            ? r.rejectedAt
-            : r.approvedAt,
-          remarks: r.remarks,
-
-  });
+      // Approving and issuing are separate steps, so the Issued by column
+      // stays blank until this record has actually been released.
+      issuedBy: r.status === "Released" ? r.issuedBy : undefined,
+      issuedByDesignation: r.status === "Released" ? r.issuedByDesignation : undefined,
+      issuedOn: r.status === "Released" ? r.releasedAt : undefined,
+      // Received by is signed by hand at the counter — never prefilled.
+      receivedBy: r.requestedBy,
+      receivedByDesignation: r.requestedByDesignation,
+      approvedOn: r.status === "Rejected" ? r.rejectedAt : r.approvedAt,
+      remarks: r.remarks,
+    });
 }
 
 

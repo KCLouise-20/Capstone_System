@@ -512,10 +512,15 @@ async function insertReleaseRequest(
   // metadata, which is the same source-of-truth pattern recordDelivery's
   // received_by_name/_email use.
   const requester = (
-    await supabase.from("users").select("full_name, email").eq("id", user.id).maybeSingle<{
-      full_name: string;
-      email: string;
-    }>()
+    await supabase
+      .from("users")
+      .select("full_name, email, roles(name)")
+      .eq("id", user.id)
+      .maybeSingle<{
+        full_name: string;
+        email: string;
+        roles: { name: string } | null;
+      }>()
   ).data;
 
   const { data: release, error: releaseError } = await supabase
@@ -526,6 +531,7 @@ async function insertReleaseRequest(
       requested_by: user.id,
       requested_by_name: requester?.full_name ?? null,
       requested_by_email: requester?.email ?? null,
+      requested_by_designation: requester?.roles?.name ?? null,
       department,
       scio: input.scio?.trim() || null,
       purpose: input.purpose?.trim() || null,
@@ -663,10 +669,15 @@ export async function approveRelease(risNumber: string): Promise<MutationResult>
   // same source-of-truth pattern as received_by_name/requested_by_name.
   const approver = user
     ? (
-        await supabase.from("users").select("full_name, email").eq("id", user.id).maybeSingle<{
-          full_name: string;
-          email: string;
-        }>()
+        await supabase
+          .from("users")
+          .select("full_name, email, roles(name)")
+          .eq("id", user.id)
+          .maybeSingle<{
+            full_name: string;
+            email: string;
+            roles: { name: string } | null;
+          }>()
       ).data
     : null;
 
@@ -682,6 +693,7 @@ export async function approveRelease(risNumber: string): Promise<MutationResult>
       approved_by: user?.id ?? null,
       approved_by_name: approver?.full_name ?? null,
       approved_by_email: approver?.email ?? null,
+      approved_by_designation: approver?.roles?.name ?? null,
       // Stamped in this same statement so the value is exactly the moment
       // this Officer's action committed — the printed RIS reads this as
       // "Approved on", which is different from release_date (the DATE
@@ -729,14 +741,34 @@ export async function rejectRelease(risNumber: string, remarks?: string): Promis
 /** Mark released. Same 23514 handling as approveRelease — relevant when a pending row is released directly without a separate approval step. */
 export async function markReleaseReleased(risNumber: string): Promise<MutationResult> {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "You must be signed in to release an item." };
+
+  // Snapshot the issuer's name/email at release time — same pattern as
+  // approveRelease, so the value survives the account being deleted.
+  const issuer = (
+    await supabase
+      .from("users")
+      .select("full_name, email, roles(name)")
+      .eq("id", user.id)
+      .maybeSingle<{ full_name: string; email: string; roles: { name: string } | null }>()
+  ).data;
+
   const { data, error } = await supabase
     .from("releases")
     .update({
       status: "released",
-      // The hand-over moment, shown on the receipt as "Released on".
       released_at: new Date().toISOString(),
+      released_by: user.id,
+      released_by_name: issuer?.full_name ?? null,
+      released_by_email: issuer?.email ?? null,
+      released_by_designation: issuer?.roles?.name ?? null,
     })
     .eq("ris_number", risNumber)
+    // Precondition, not just a filter: stops a stale "Approved" row (or a
+    // double-click) from releasing twice and re-running the stock effect.
     .eq("status", "approved")
     .select("ris_number");
 
