@@ -403,6 +403,28 @@ export async function recordDelivery(input: RecordDeliveryInput): Promise<Mutati
     await supabase.from("deliveries").delete().eq("delivery_id", delivery.delivery_id);
     return { error: friendlyMutationError(itemsError) };
   }
+  const costsByName = new Map(input.items.map((l) => [l.itemName, l.unitCost]));
+  for (const [itemName, unitCost] of costsByName) {
+    const itemId = itemIds.get(itemName)?.id;
+    if (!itemId || unitCost == null) continue;
+
+    const { data: current } = await supabase
+      .from("items")
+      .select("unit_cost")
+      .eq("item_id", itemId)
+      .maybeSingle<{ unit_cost: number }>();
+    if (!current) continue;
+
+    const oldCost = Number(current.unit_cost ?? 0);
+    const newCost = Number(unitCost);
+    const averaged = oldCost > 0 ? (oldCost + newCost) / 2 : newCost;
+
+    const { error: costError } = await supabase
+      .from("items")
+      .update({ unit_cost: Math.round(averaged * 100) / 100 })
+      .eq("item_id", itemId);
+    if (costError) console.error("Could not update item unit cost", costError);
+  }
 
   return {};
 }

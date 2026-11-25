@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, FileText } from "lucide-react";
+import { Plus, Minus, Trash2, FileText } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge, requestStatusTone, stockStatusTone } from "@/components/ui/Badge";
@@ -137,6 +137,35 @@ export function RequestSuppliesClient({
 
   function removeLine(index: number) {
     setLines((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  // Step a line's quantity. Decreasing to 0 removes the line, same as the
+  // trash button. Increasing is capped at the item's live stock on hand,
+  // matching addLine's rule.
+  function stepLine(index: number, delta: number) {
+    setFormError("");
+    setLines((prev) => {
+      const line = prev[index];
+      if (!line) return prev;
+
+      const nextQty = line.qty + delta;
+      if (nextQty <= 0) return prev.filter((_, i) => i !== index);
+
+      if (delta > 0) {
+        const item = inventoryItems.find((i) => i.itemName === line.itemName);
+        const onHand = item?.onHand ?? line.stock;
+        if (nextQty > onHand) {
+          setFormError(
+            `Only ${onHand} ${item?.unit ?? ""} of ${line.itemName} ${onHand === 1 ? "is" : "are"} on hand.`,
+          );
+          return prev;
+        }
+      }
+
+      const next = [...prev];
+      next[index] = { ...line, qty: nextQty };
+      return next;
+    });
   }
 
   /**
@@ -398,7 +427,29 @@ export function RequestSuppliesClient({
                     <span className="font-medium">{line.itemName}</span>
                   </div>
                   <div className="flex items-center gap-3 text-muted">
-                    <span>Qty req. {line.qty} {unit}</span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => stepLine(i, -1)}
+                        aria-label={`Decrease quantity of ${line.itemName}`}
+                        className="flex size-7 items-center justify-center rounded border border-neutral-300 hover:bg-neutral-100"
+                      >
+                        <Minus size={13} strokeWidth={2} />
+                      </button>
+                      <span className="min-w-8 text-center font-medium text-foreground">
+                        {line.qty}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => stepLine(i, 1)}
+                        disabled={line.qty >= (invItem?.onHand ?? line.stock)}
+                        aria-label={`Increase quantity of ${line.itemName}`}
+                        className="flex size-7 items-center justify-center rounded border border-neutral-300 hover:bg-neutral-100 disabled:opacity-40"
+                      >
+                        <Plus size={13} strokeWidth={2} />
+                      </button>
+                      <span className="ml-1">{unit}</span>
+                    </div>
                     <span className={overStock ? "font-semibold text-critical-text" : ""}>
                       Stock {invItem?.onHand ?? line.stock}
                     </span>

@@ -467,7 +467,7 @@ export function InventoryClient({
                   className="size-3.5"
                 />
               </th>
-              {["Item code", "Item name", "Category", "Unit", "Unit  Cost", "On hand", "Reorder lvl", "Status"].map(
+                  {["Item code", "Item name", "Category", "Unit", "Unit  Cost", "On hand", "Total Unit Cost", "Reorder lvl", "Status"].map(
                 (h) => (
                   <th
                     key={h}
@@ -511,13 +511,19 @@ export function InventoryClient({
                   </td>
                   <td className={`${cell} text-muted`}>{item.category}</td>
                   <td className={`${cell} text-muted`}>{item.unit}</td>
-                  <td className={`${cell} text-muted`}>
+                      <td className={`${cell} text-muted`}>
                     {item.unitCost == null
-                     ? "—"
-                   : `₱${item.unitCost.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                    </td>
-                    <td className={`${cell} font-bold`}>{item.onHand}</td>
-                    <td className={`${cell} text-muted`}>{item.reorderLevel}</td>
+                      ? "—"
+                      : `₱${item.unitCost.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  </td>
+                  <td className={`${cell} font-bold`}>{item.onHand}</td>
+                  <td className={`${cell} font-bold`}>
+                    {item.unitCost == null
+                      ? "—"
+                      : `₱${(item.unitCost * item.onHand).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  </td>
+                  <td className={`${cell} text-muted`}>{item.reorderLevel}</td>
+
                   <td className={cell}>
                     <Badge tone={stockStatusTone(item.status)}>{item.status}</Badge>
                   </td>

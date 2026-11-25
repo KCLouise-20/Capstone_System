@@ -2,11 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Download, ChevronDown, ScanLine } from "lucide-react";
+import { Plus, Minus, Trash2, Download, ChevronDown, ScanLine, QrCode } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge, requestStatusTone, stockStatusTone } from "@/components/ui/Badge";
 import { QrScannerModal } from "@/components/qr/QrScannerModal";
+import { QrClaimSlipModal } from "@/components/qr/QrClaimSlipModal";
 import { todayPh } from "@/lib/datetime";
 import {
   createRisRequest,
@@ -50,6 +51,7 @@ export function ReleasesClient({
   const [isSavingDraft, startDraftTransition] = useTransition();
   const [isActing, startActionTransition] = useTransition();
   const [viewingRis, setViewingRis] = useState<RisDocumentRecord | null>(null);
+  const [qrRis, setQrRis] = useState<RisRecord | null>(null);
   const [risScanVerified, setRisScanVerified] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
 
@@ -117,8 +119,37 @@ export function ReleasesClient({
   }
 
 
-  function removeLine(index: number) {
+    function removeLine(index: number) {
     setLines((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  // Step a line's quantity. Decreasing to 0 removes the line, which is the
+  // same thing the trash button does. Increasing is capped at the item's
+  // stock on hand, matching addLine's rule.
+  function stepLine(index: number, delta: number) {
+    setFormError("");
+    setLines((prev) => {
+      const line = prev[index];
+      if (!line) return prev;
+
+      const nextQty = line.qty + delta;
+      if (nextQty <= 0) return prev.filter((_, i) => i !== index);
+
+      if (delta > 0) {
+        const item = inventoryItems.find((i) => i.itemName === line.itemName);
+        const onHand = item?.onHand ?? line.stock;
+        if (nextQty > onHand) {
+          setFormError(
+            `Only ${onHand} ${item?.unit ?? ""} of ${line.itemName} ${onHand === 1 ? "is" : "are"} on hand.`,
+          );
+          return prev;
+        }
+      }
+
+      const next = [...prev];
+      next[index] = { ...line, qty: nextQty };
+      return next;
+    });
   }
 
   function resetForm() {
@@ -373,8 +404,30 @@ export function ReleasesClient({
                     <ItemPhoto imageUrl={invItem?.imageUrl ?? null} alt={line.itemName} size="sm" />
                     <span className="font-medium">{line.itemName}</span>
                   </div>
-                  <div className="flex items-center gap-3 text-muted">
-                    <span>Qty req. {line.qty} {unit}</span>
+                                    <div className="flex items-center gap-3 text-muted">
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => stepLine(i, -1)}
+                        aria-label={`Decrease quantity of ${line.itemName}`}
+                        className="flex size-7 items-center justify-center rounded border border-neutral-300 hover:bg-neutral-100"
+                      >
+                        <Minus size={13} strokeWidth={2} />
+                      </button>
+                      <span className="min-w-8 text-center font-medium text-foreground">
+                        {line.qty}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => stepLine(i, 1)}
+                        disabled={line.qty >= line.stock}
+                        aria-label={`Increase quantity of ${line.itemName}`}
+                        className="flex size-7 items-center justify-center rounded border border-neutral-300 hover:bg-neutral-100 disabled:opacity-40"
+                      >
+                        <Plus size={13} strokeWidth={2} />
+                      </button>
+                      <span className="ml-1">{unit}</span>
+                    </div>
                     <span>Stock {line.stock}</span>
                     {line.stockStatus !== "OK" && (
                       <Badge tone={stockStatusTone(line.stockStatus)} className="!px-2 !py-0.5">
@@ -530,13 +583,23 @@ export function ReleasesClient({
                     </>
                   )}
                   {r.status === "Approved" && (
-                    <button
-                      onClick={() => runAction(r.risNo, () => markReleaseReleased(r.risNo))}
-                      disabled={isActing && actioningRisNo === r.risNo}
-                      className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-bold text-foreground hover:bg-background disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Release
-                    </button>
+                    <>
+                      <button
+                        onClick={() => runAction(r.risNo, () => markReleaseReleased(r.risNo))}
+                        disabled={isActing && actioningRisNo === r.risNo}
+                        className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-bold text-foreground hover:bg-background disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Release
+                      </button>
+                      <button
+                        onClick={() => setQrRis(r)}
+                        title="Show claim slip QR"
+                        aria-label={`Show claim slip QR for ${r.risNo}`}
+                        className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border text-[#52525b] hover:bg-background"
+                      >
+                        <QrCode size={14} strokeWidth={1.8} />
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -560,6 +623,12 @@ export function ReleasesClient({
       title="Scan Claim Slip"
       instructions="Point the camera at the requester's printed claim slip QR code to pull up and verify their request before releasing items."
       onDetect={handleScanDetect}
+    />
+    <QrClaimSlipModal
+      open={!!qrRis}
+      onClose={() => setQrRis(null)}
+      risNumber={qrRis?.risNo ?? ""}
+      requestedBy={qrRis?.requestedBy}
     />
     </>
   );

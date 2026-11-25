@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -52,7 +52,30 @@ export function DeliveriesClient({
   const [dateDelivered, setDateDelivered] = useState(
     () => new Date().toISOString().slice(0, 10),
   );
-  const [formError, setFormError] = useState("");
+ const [formError, setFormError] = useState("");
+  const [filterCategory, setFilterCategory] = useState("All categories");
+
+  // Categories come from the loaded items, so only non-empty ones appear.
+  const itemCategories = useMemo(
+    () => Array.from(new Set(inventoryItems.map((i) => i.category))).sort(),
+    [inventoryItems],
+  );
+
+  const filteredItems = useMemo(
+    () =>
+      filterCategory === "All categories"
+        ? inventoryItems
+        : inventoryItems.filter((i) => i.category === filterCategory),
+    [inventoryItems, filterCategory],
+  );
+
+  // Switching category resets the picker to that category's first item,
+  // since the previously selected item is no longer in the list.
+  function changeCategory(next: string) {
+    setFilterCategory(next);
+    const first = inventoryItems.find((i) => next === "All categories" || i.category === next);
+    setPendingItem(first?.itemName ?? "");
+  }
 
   const total = lines.reduce((sum, l) => sum + l.qty * l.unitCost, 0);
   const refNo = nextDeliveryRef(deliveries);
@@ -160,15 +183,29 @@ export function DeliveriesClient({
           <span className="text-xs font-bold text-muted">Delivery items</span>
           <div className="flex flex-wrap items-end gap-2">
             <ItemPhoto imageUrl={pendingItemPhoto} alt={pendingItem || "Selected item"} size="md" />
-            <Field label="Item" className="min-w-[160px] flex-1">
+                        <Field label="Item" className="min-w-[160px] flex-1">
               <select
                 value={pendingItem}
                 onChange={(e) => setPendingItem(e.target.value)}
                 className="input"
               >
-                {inventoryItems.map((i) => (
+                {filteredItems.map((i) => (
                   <option key={i.itemCode} value={i.itemName}>
                     {i.itemName}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Category" className="w-40">
+              <select
+                value={filterCategory}
+                onChange={(e) => changeCategory(e.target.value)}
+                className="input"
+              >
+                <option value="All categories">All categories</option>
+                {itemCategories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
                   </option>
                 ))}
               </select>

@@ -388,20 +388,6 @@ function RisDocumentContent({
         <span>RIS DATE RECEIVED: __________________</span>
         <span>RIS DATE RETURNED: __________________</span>
       </div>
-
-      {qrUrl && (
-        <div className="mt-6 flex flex-col items-center gap-1 border-t border-black pt-3 text-center">
-          {/* eslint-disable-next-line @next/next/no-img-element -- same
-              reasoning as PrintHeader's logo: a data-URL QR generated
-              client-side has no next/image benefit and needs to be
-              reliably present the moment print media kicks in. */}
-          <img src={qrUrl} alt="" className="size-24" />
-          <div className="text-[10px] font-bold uppercase">Claim Slip — Present With Valid ID</div>
-          <div className="max-w-xs text-[9px] text-[#71717a]">
-            To be scanned by the Supply Office to verify this request before releasing items.
-          </div>
-        </div>
-      )}
     </div>
   );
 }
