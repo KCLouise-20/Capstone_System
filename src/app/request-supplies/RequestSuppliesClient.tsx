@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Minus, Trash2, FileText } from "lucide-react";
+import { Plus, Minus, Trash2, FileText, QrCode } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge, requestStatusTone, stockStatusTone } from "@/components/ui/Badge";
@@ -14,10 +14,12 @@ import {
 } from "@/lib/supabase/mutations";
 import { RisDocumentPanel, type RisDocumentRecord } from "@/components/reports/DocumentModals";
 import { ItemPhoto } from "@/components/inventory/ItemPhoto";
-import { todayPh } from "@/lib/datetime";
+import { todayPh, formatPhDateTime } from "@/lib/datetime";
 import type { InventoryItem, StockStatus, SupplyRequest } from "@/lib/types";
 import type { DocumentLetterhead } from "@/lib/letterhead";
+import { QrClaimSlipModal } from "@/components/qr/QrClaimSlipModal";
 import type { SystemSettings } from "@/lib/supabase/queries";
+
 
 
 interface DraftLine {
@@ -62,6 +64,7 @@ export function RequestSuppliesClient({
   const [dateNeeded, setDateNeeded] = useState(() => new Date().toISOString().slice(0, 10));
   const [purpose, setPurpose] = useState("");
   const [selectedRef, setSelectedRef] = useState(myRequests[0]?.refNo ?? "");
+  const [qrRequest, setQrRequest] = useState<SupplyRequest | null>(null);
   const [formError, setFormError] = useState("");
   const [promotingRef, setPromotingRef] = useState<string | null>(null);
   const [deletingRef, setDeletingRef] = useState<string | null>(null);
@@ -330,7 +333,15 @@ export function RequestSuppliesClient({
   return (
     <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[1.2fr_1fr]">
       {viewingRis ? (
-        <RisDocumentPanel record={viewingRis} onClose={() => setViewingRis(null)} letterhead={letterhead} />
+        <>
+          <RisDocumentPanel record={viewingRis} onClose={() => setViewingRis(null)} letterhead={letterhead} />
+          <QrClaimSlipModal
+            open={!!qrRequest}
+            onClose={() => setQrRequest(null)}
+            risNumber={qrRequest?.refNo ?? ""}
+            requestedBy={requestedBy}
+          />
+        </>
       ) : (
       <Card className="no-print">
         <CardHeader title="New Supply Request" />
@@ -557,7 +568,19 @@ export function RequestSuppliesClient({
                     <FileText size={13} strokeWidth={1.8} />
                   </button>
                 )}
+                {(r.status === "Approved" || r.status === "Released") && (
+                  <button
+                    onClick={() => setQrRequest(r)}
+                    title="Show claim slip QR"
+                    aria-label={`Show claim slip QR for ${r.refNo}`}
+                    className="flex size-6 shrink-0 items-center justify-center text-muted hover:text-foreground"
+                  >
+                    <QrCode size={13} strokeWidth={1.8} />
+                  </button>
+                )}
                 <Badge tone={requestStatusTone(r.status)}>{r.status}</Badge>
+
+
               </div>
             ))}
             {myRequests.length === 0 && (
@@ -574,7 +597,7 @@ export function RequestSuppliesClient({
                 <Badge tone={requestStatusTone(selected.status)}>{selected.status}</Badge>
               </DetailRow>
               <DetailRow label="Approved by" value={selected.approvedBy ?? "—"} />
-              <DetailRow label="Approved on" value={selected.approvedOn ?? "—"} />
+              <DetailRow label="Approved on"value={selected.approvedOn ? formatPhDateTime(selected.approvedOn) : "—"} />
               <DetailRow label="Remarks" value={selected.remarks ?? "—"} />
             </div>
           </Card>
