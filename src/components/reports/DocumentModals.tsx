@@ -32,6 +32,14 @@ import { formatPhDate } from "@/lib/datetime";
  *    keeps a second, hidden .print-area copy of the same content outside
  *    the modal for window.print() to actually use.
  */
+const RIS_APPROVED_BY = {
+  name: "PROF. COLBER G. RABAYA",
+  designation: "Campus Director, Villanueva",
+};
+const RIS_ISSUED_BY = {
+  name: "JETH URIEL M. MACION",
+  designation: "Head, Supply and Property Management Section",
+};
 
 export interface RisDocumentRecord {
   refNo: string;
@@ -345,20 +353,15 @@ function RisDocumentContent({
   },
   {
     head: "Approved by:",
-    name: record.approvedBy,
-    designation: record.approvedByDesignation,
-    date: record.approvedOn ? formatPhDate(record.approvedOn) : "",
+    name: RIS_APPROVED_BY.name,
+    designation: RIS_APPROVED_BY.designation,
+    date: "",
   },
-    // Only a released record has been issued. Until then this cell
-    // prints blank, regardless of what the caller passed in.
   {
     head: "Issued by:",
-    name: record.status === "Released" ? record.issuedBy : undefined,
-    designation: record.status === "Released" ? record.issuedByDesignation : undefined,
-    date:
-      record.status === "Released" && record.issuedOn
-        ? formatPhDate(record.issuedOn)
-        : "",
+    name: RIS_ISSUED_BY.name,
+    designation: RIS_ISSUED_BY.designation,
+    date: "",
   },
   {
     head: "Received by:",
